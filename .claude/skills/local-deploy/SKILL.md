@@ -5,11 +5,11 @@ disable-model-invocation: true
 allowed-tools: Bash(npm*), Bash(node*), Bash(npx*), Bash(mkdir*), Bash(cp*), Read, Glob
 ---
 
-Deploy **obsidian-notion-freeze** to the local Obsidian vault for testing. Do NOT build first — just copy the already-built files.
+Deploy **obsidian-notion-database-sync** to the local Obsidian vault for testing. Do NOT build first — just copy the already-built files.
 
 ## Target
 
-`D:/GitHub/ran-work/.obsidian/plugins/obsidian-notion-freeze/`
+`D:/GitHub/ran-work/.obsidian/plugins/obsidian-notion-database-sync/`
 
 ## Steps
 
