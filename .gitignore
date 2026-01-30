@@ -1,0 +1,12 @@
+# Build output
+main.js
+*.js.map
+
+# npm
+node_modules/
+
+# Dev
+.devtarget
+
+# Reference code (not part of this plugin)
+obsidian-importer/

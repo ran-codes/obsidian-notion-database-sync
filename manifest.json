@@ -1,0 +1,9 @@
+{
+	"id": "obsidian-notion-database-sync",
+	"name": "Notion Database Sync",
+	"version": "0.1.0",
+	"minAppVersion": "0.15.0",
+	"description": "Sync Notion databases and pages into your Obsidian vault.",
+	"author": "ranli",
+	"isDesktopOnly": false
+}
