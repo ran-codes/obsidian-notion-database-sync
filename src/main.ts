@@ -169,7 +169,7 @@ export default class NotionFreezePlugin extends Plugin {
 			const databaseId = cache?.frontmatter?.["notion-database-id"];
 
 			if (!notionId) {
-				new Notice("Notion sync: no notion-id found in frontmatter.");
+				new Notice("Notion sync: No Notion ID found in frontmatter.");
 				return;
 			}
 

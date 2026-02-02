@@ -1,6 +1,5 @@
 import {
 	PageObjectResponse,
-	RichTextItemResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 import { App, normalizePath, TFile } from "obsidian";
 import { FreezeOptions, PageFreezeResult } from "./types";
@@ -188,10 +187,7 @@ function formatYamlEntry(key: string, value: unknown): string {
 		const items = value.map((v) => `  - ${yamlEscapeString(String(v))}`);
 		return `${safeKey}:\n${items.join("\n")}`;
 	}
-	if (typeof value === "object") {
-		return `${safeKey}: ${yamlEscapeString(JSON.stringify(value))}`;
-	}
-	return `${safeKey}: ${yamlEscapeString(String(value))}`;
+	return `${safeKey}: ${yamlEscapeString(typeof value === "object" ? JSON.stringify(value) : String(value))}`;
 }
 
 function yamlEscapeString(str: string): string {

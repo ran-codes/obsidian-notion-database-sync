@@ -20,7 +20,7 @@ export class NotionFreezeSettingTab extends PluginSettingTab {
 			)
 			.addText((text) =>
 				text
-					.setPlaceholder("ntn_...")
+					.setPlaceholder("Paste your integration token")
 					.setValue(this.plugin.settings.apiKey)
 					.then((t) => {
 						t.inputEl.type = "password";
