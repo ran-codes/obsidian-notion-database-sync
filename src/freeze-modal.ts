@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting, TFile } from "obsidian";
+import { App, Modal, Notice, Setting } from "obsidian";
 
 export interface FreezeModalResult {
 	notionInput: string;
@@ -113,7 +113,7 @@ export class FreezeModal extends Modal {
 		// Find .base file in the database folder
 		const folder = this.app.vault.getAbstractFileByPath(db.folderPath);
 		if (!folder) {
-			new Notice(`Notion Sync: Folder not found: ${db.folderPath}`);
+			new Notice(`Notion sync: Folder not found: ${db.folderPath}`);
 			return;
 		}
 
@@ -123,9 +123,9 @@ export class FreezeModal extends Modal {
 		);
 
 		if (baseFile) {
-			this.app.workspace.getLeaf("tab").openFile(baseFile);
+			void this.app.workspace.getLeaf("tab").openFile(baseFile);
 		} else {
-			new Notice(`Notion Sync: No .base file found in ${db.folderPath}`);
+			new Notice(`Notion sync: No .base file found in ${db.folderPath}`);
 		}
 	}
 

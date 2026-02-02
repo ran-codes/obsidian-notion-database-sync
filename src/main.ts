@@ -45,7 +45,7 @@ export default class NotionFreezePlugin extends Plugin {
 				const notionId = cache?.frontmatter?.["notion-id"];
 				if (!notionId) return false;
 				if (!checking) {
-					this.executeRefreeze(file);
+					void this.executeRefreeze(file);
 				}
 				return true;
 			},
@@ -67,7 +67,7 @@ export default class NotionFreezePlugin extends Plugin {
 	private openFreezeModal(): void {
 		if (!this.settings.apiKey) {
 			new Notice(
-				"Notion Sync: Please set your API key in Settings → Notion Database Sync."
+				"Notion sync: please set your API key in settings."
 			);
 			return;
 		}
@@ -75,8 +75,8 @@ export default class NotionFreezePlugin extends Plugin {
 		new FreezeModal(
 			this.app,
 			this.settings.defaultOutputFolder,
-			(result) => this.executeFreeze(result.notionInput, result.outputFolder),
-			(db) => this.executeResyncDatabase(db)
+			(result) => { void this.executeFreeze(result.notionInput, result.outputFolder); },
+			(db) => { void this.executeResyncDatabase(db); }
 		).open();
 	}
 
@@ -88,28 +88,28 @@ export default class NotionFreezePlugin extends Plugin {
 			const notionId = normalizeNotionId(input);
 			const client = createNotionClient(this.settings.apiKey);
 
-			new Notice("Notion Sync: Detecting content type...");
+			new Notice("Notion sync: detecting content type...");
 
 			const detection = await detectNotionObject(client, notionId);
 
 			if (detection.type === "page") {
-				new Notice("Notion Sync: Syncing page...");
+				new Notice("Notion sync: syncing page...");
 				const result = await freezePage(this.app, {
 					client,
 					notionId,
 					outputFolder,
 				});
 				new Notice(
-					`Notion Sync: Page "${result.title}" ${result.status}.`
+					`Notion sync: Page "${result.title}" ${result.status}.`
 				);
 			} else {
-				const notice = new Notice("Notion Sync: Syncing database...", 0);
+				const notice = new Notice("Notion sync: syncing database...", 0);
 				const result = await freezeDatabase(
 					this.app,
 					{ client, notionId, outputFolder },
 					(current, total, title) => {
 						notice.setMessage(
-							`Notion Sync: "${title}" ${current} / ${total} entries`
+							`Notion sync: "${title}" ${current} / ${total} entries`
 						);
 					}
 				);
@@ -119,16 +119,16 @@ export default class NotionFreezePlugin extends Plugin {
 				);
 			}
 		} catch (err) {
-			console.error("Notion Sync error:", err);
+			console.error("Notion sync error:", err);
 			new Notice(
-				`Notion Sync error: ${err instanceof Error ? err.message : String(err)}`
+				`Notion sync error: ${err instanceof Error ? err.message : String(err)}`
 			);
 		}
 	}
 
 	private async executeResyncDatabase(db: FrozenDatabase): Promise<void> {
 		try {
-			const notice = new Notice(`Notion Sync: Re-syncing "${db.title}"...`, 0);
+			const notice = new Notice(`Notion sync: Re-syncing "${db.title}"...`, 0);
 			const client = createNotionClient(this.settings.apiKey);
 			const result = await freezeDatabase(
 				this.app,
@@ -139,7 +139,7 @@ export default class NotionFreezePlugin extends Plugin {
 				},
 				(current, total, title) => {
 					notice.setMessage(
-						`Notion Sync: "${title}" ${current} / ${total} entries`
+						`Notion sync: "${title}" ${current} / ${total} entries`
 					);
 				}
 			);
@@ -148,9 +148,9 @@ export default class NotionFreezePlugin extends Plugin {
 				formatDatabaseResult(result.title, result, "re-synced")
 			);
 		} catch (err) {
-			console.error("Notion Sync resync error:", err);
+			console.error("Notion sync resync error:", err);
 			new Notice(
-				`Notion Sync error: ${err instanceof Error ? err.message : String(err)}`
+				`Notion sync error: ${err instanceof Error ? err.message : String(err)}`
 			);
 		}
 	}
@@ -158,7 +158,7 @@ export default class NotionFreezePlugin extends Plugin {
 	private async executeRefreeze(file: TFile): Promise<void> {
 		if (!this.settings.apiKey) {
 			new Notice(
-				"Notion Sync: Please set your API key in Settings → Notion Database Sync."
+				"Notion sync: please set your API key in settings."
 			);
 			return;
 		}
@@ -169,7 +169,7 @@ export default class NotionFreezePlugin extends Plugin {
 			const databaseId = cache?.frontmatter?.["notion-database-id"];
 
 			if (!notionId) {
-				new Notice("Notion Sync: No notion-id found in frontmatter.");
+				new Notice("Notion sync: no notion-id found in frontmatter.");
 				return;
 			}
 
@@ -177,7 +177,7 @@ export default class NotionFreezePlugin extends Plugin {
 
 			if (databaseId) {
 				// Re-sync entire database
-				const notice = new Notice("Notion Sync: Re-syncing database...", 0);
+				const notice = new Notice("Notion sync: re-syncing database...", 0);
 				const parentFolder = file.parent?.path || this.settings.defaultOutputFolder;
 				const result = await freezeDatabase(
 					this.app,
@@ -189,7 +189,7 @@ export default class NotionFreezePlugin extends Plugin {
 					},
 					(current, total, title) => {
 						notice.setMessage(
-							`Notion Sync: "${title}" ${current} / ${total} entries`
+							`Notion sync: "${title}" ${current} / ${total} entries`
 						);
 					}
 				);
@@ -199,7 +199,7 @@ export default class NotionFreezePlugin extends Plugin {
 				);
 			} else {
 				// Re-sync single page
-				new Notice("Notion Sync: Re-syncing page...");
+				new Notice("Notion sync: re-syncing page...");
 				const parentFolder = file.parent?.path || this.settings.defaultOutputFolder;
 				const result = await freezePage(this.app, {
 					client,
@@ -207,13 +207,13 @@ export default class NotionFreezePlugin extends Plugin {
 					outputFolder: parentFolder,
 				});
 				new Notice(
-					`Notion Sync: Page "${result.title}" ${result.status}.`
+					`Notion sync: Page "${result.title}" ${result.status}.`
 				);
 			}
 		} catch (err) {
-			console.error("Notion Sync error:", err);
+			console.error("Notion sync error:", err);
 			new Notice(
-				`Notion Sync error: ${err instanceof Error ? err.message : String(err)}`
+				`Notion sync error: ${err instanceof Error ? err.message : String(err)}`
 			);
 		}
 	}
@@ -230,7 +230,7 @@ function formatDatabaseResult(
 	verb: string
 ): string {
 	let msg =
-		`Notion Sync: "${title}" ${verb}. ` +
+		`Notion sync: "${title}" ${verb}. ` +
 		`${result.created} created, ${result.updated} updated, ` +
 		`${result.skipped} skipped, ${result.deleted} deleted`;
 	if (result.failed > 0) {

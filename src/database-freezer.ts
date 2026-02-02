@@ -3,8 +3,6 @@ import {
 	DatabaseObjectResponse,
 	DataSourceObjectResponse,
 	PageObjectResponse,
-	PartialPageObjectResponse,
-	PartialDataSourceObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 import { App, normalizePath, TFile, TFolder } from "obsidian";
 import { DatabaseFreezeResult, FreezeOptions } from "./types";
@@ -119,23 +117,16 @@ async function queryAllEntries(
 	let cursor: string | undefined = undefined;
 
 	do {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const response: any = await notionRequest(() =>
+		const response = await notionRequest(() =>
 			client.dataSources.query({
 				data_source_id: dataSourceId,
 				start_cursor: cursor,
 				page_size: 100,
 			})
 		);
-		const results: Array<
-			| PageObjectResponse
-			| PartialPageObjectResponse
-			| PartialDataSourceObjectResponse
-			| DataSourceObjectResponse
-		> = response.results;
-		for (const result of results) {
+		for (const result of response.results) {
 			if (result.object === "page" && "properties" in result) {
-				entries.push(result as PageObjectResponse);
+				entries.push(result);
 			}
 		}
 		cursor = response.has_more

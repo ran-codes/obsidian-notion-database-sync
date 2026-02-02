@@ -1,4 +1,3 @@
-import { Client } from "@notionhq/client";
 import {
 	PageObjectResponse,
 	RichTextItemResponse,
@@ -72,7 +71,7 @@ export async function freezePage(
 function getPageTitle(page: PageObjectResponse): string {
 	for (const prop of Object.values(page.properties)) {
 		if (prop.type === "title") {
-			return convertRichText(prop.title as RichTextItemResponse[]);
+			return convertRichText(prop.title);
 		}
 	}
 	return "Untitled";
@@ -93,7 +92,7 @@ function mapPropertiesToFrontmatter(
 				break;
 			case "rich_text":
 				frontmatter[key] = convertRichText(
-					prop.rich_text as RichTextItemResponse[]
+					prop.rich_text
 				);
 				break;
 			case "number":
@@ -188,6 +187,9 @@ function formatYamlEntry(key: string, value: unknown): string {
 		if (value.length === 0) return `${safeKey}: []`;
 		const items = value.map((v) => `  - ${yamlEscapeString(String(v))}`);
 		return `${safeKey}:\n${items.join("\n")}`;
+	}
+	if (typeof value === "object") {
+		return `${safeKey}: ${yamlEscapeString(JSON.stringify(value))}`;
 	}
 	return `${safeKey}: ${yamlEscapeString(String(value))}`;
 }

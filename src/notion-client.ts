@@ -6,7 +6,7 @@ export function createNotionClient(apiKey: string): Client {
 	return new Client({
 		auth: apiKey,
 		fetch: async (url: RequestInfo | URL, init?: RequestInit) => {
-			const urlString = url.toString();
+			const urlString = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
 			const response = await requestUrl({
 				url: urlString,
 				method: init?.method || "GET",

@@ -1,5 +1,4 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
-import { NotionFreezeSettings } from "./types";
 import NotionFreezePlugin from "./main";
 
 export class NotionFreezeSettingTab extends PluginSettingTab {

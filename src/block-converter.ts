@@ -288,7 +288,7 @@ export async function fetchAllChildren(
 		);
 		for (const block of response.results) {
 			if ("type" in block) {
-				blocks.push(block as BlockObjectResponse);
+				blocks.push(block);
 			}
 		}
 		cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
