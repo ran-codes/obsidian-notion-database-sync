@@ -25,7 +25,7 @@ export class NotionFreezeSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.apiKey)
 					.then((t) => {
 						t.inputEl.type = "password";
-						t.inputEl.style.width = "300px";
+						t.inputEl.addClass("notion-sync-input-wide");
 					})
 					.onChange(async (value) => {
 						this.plugin.settings.apiKey = value.trim();

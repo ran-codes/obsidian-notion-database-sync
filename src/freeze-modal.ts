@@ -48,7 +48,7 @@ export class FreezeModal extends Modal {
 						this.notionInput = value.trim();
 					})
 					.then((t) => {
-						t.inputEl.style.width = "100%";
+						t.inputEl.addClass("notion-sync-input-wide");
 					})
 			);
 
