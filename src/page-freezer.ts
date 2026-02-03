@@ -187,7 +187,10 @@ function formatYamlEntry(key: string, value: unknown): string {
 		const items = value.map((v) => `  - ${yamlEscapeString(String(v))}`);
 		return `${safeKey}:\n${items.join("\n")}`;
 	}
-	return `${safeKey}: ${yamlEscapeString(typeof value === "object" ? JSON.stringify(value) : String(value))}`;
+	if (typeof value === "object") {
+		return `${safeKey}: ${yamlEscapeString(JSON.stringify(value))}`;
+	}
+	return `${safeKey}: ${yamlEscapeString(String(value))}`;
 }
 
 function yamlEscapeString(str: string): string {
