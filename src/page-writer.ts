@@ -2,37 +2,21 @@ import {
 	PageObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 import { App, normalizePath, TFile } from "obsidian";
-import { FreezeOptions, PageFreezeResult } from "./types";
-import { notionRequest } from "./notion-client";
+import { PageWriteOptions, PageWriteResult } from "./types";
 import { convertBlocksToMarkdown, convertRichText, fetchAllChildren } from "./block-converter";
 
-export async function freezePage(
+export async function writeDatabaseEntry(
 	app: App,
-	options: FreezeOptions
-): Promise<PageFreezeResult> {
-	const { client, notionId, outputFolder, databaseId } = options;
-
-	// Fetch page metadata
-	const page = (await notionRequest(() =>
-		client.pages.retrieve({ page_id: notionId })
-	)) as PageObjectResponse;
+	options: PageWriteOptions
+): Promise<PageWriteResult> {
+	const { client, page, outputFolder, databaseId } = options;
 
 	const title = getPageTitle(page);
 	const safeName = sanitizeFileName(title || "Untitled");
 	const filePath = normalizePath(`${outputFolder}/${safeName}.md`);
 
-	// Check for re-freeze: compare last_edited_time
-	const existingFile = app.vault.getAbstractFileByPath(filePath);
-	if (existingFile instanceof TFile) {
-		const cache = app.metadataCache.getFileCache(existingFile);
-		const storedEdited = cache?.frontmatter?.["notion-last-edited"];
-		if (storedEdited && storedEdited === page.last_edited_time) {
-			return { status: "skipped", filePath, title: safeName };
-		}
-	}
-
 	// Fetch all blocks
-	const blocks = await fetchAllChildren(client, notionId);
+	const blocks = await fetchAllChildren(client, page.id);
 	const markdown = await convertBlocksToMarkdown(blocks, {
 		client,
 		indentLevel: 0,
@@ -40,23 +24,20 @@ export async function freezePage(
 
 	// Build frontmatter
 	const frontmatter: Record<string, unknown> = {
-		"notion-id": notionId,
+		"notion-id": page.id,
 		"notion-url": page.url,
 		"notion-frozen-at": new Date().toISOString(),
 		"notion-last-edited": page.last_edited_time,
+		"notion-database-id": databaseId,
 	};
-	if (databaseId) {
-		frontmatter["notion-database-id"] = databaseId;
-	}
 
 	// Map database entry properties to frontmatter
-	if (databaseId) {
-		mapPropertiesToFrontmatter(page.properties, frontmatter);
-	}
+	mapPropertiesToFrontmatter(page.properties, frontmatter);
 
 	const content = buildFileContent(frontmatter, markdown);
 
 	// Write file
+	const existingFile = app.vault.getAbstractFileByPath(filePath);
 	if (existingFile instanceof TFile) {
 		await app.vault.modify(existingFile, content);
 		return { status: "updated", filePath, title: safeName };

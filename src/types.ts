@@ -1,4 +1,5 @@
 import { Client } from "@notionhq/client";
+import { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 
 export interface NotionFreezeSettings {
 	apiKey: string;
@@ -20,26 +21,23 @@ export interface FreezeFrontmatter {
 	[key: string]: unknown;
 }
 
-export type DetectionResult =
-	| { type: "page"; id: string }
-	| { type: "database"; id: string };
-
-export interface FreezeOptions {
+export interface PageWriteOptions {
 	client: Client;
-	notionId: string;
+	page: PageObjectResponse;
 	outputFolder: string;
-	databaseId?: string;
+	databaseId: string;
 }
 
-export interface PageFreezeResult {
-	status: "created" | "updated" | "skipped";
+export interface PageWriteResult {
+	status: "created" | "updated";
 	filePath: string;
 	title: string;
 }
 
-export interface DatabaseFreezeResult {
+export interface DatabaseSyncResult {
 	title: string;
 	folderPath: string;
+	total: number;
 	created: number;
 	updated: number;
 	skipped: number;
@@ -47,3 +45,12 @@ export interface DatabaseFreezeResult {
 	failed: number;
 	errors: string[];
 }
+
+export type ProgressPhase =
+	| { phase: "querying" }
+	| { phase: "diffing" }
+	| { phase: "detected"; staleCount: number; total: number }
+	| { phase: "importing"; current: number; total: number }
+	| { phase: "done" };
+
+export type ProgressCallback = (progress: ProgressPhase) => void;

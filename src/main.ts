@@ -1,14 +1,9 @@
-import { addIcon, Notice, Plugin, TFile } from "obsidian";
-import { NotionFreezeSettings, DEFAULT_SETTINGS, DatabaseFreezeResult } from "./types";
+import { addIcon, Notice, Plugin } from "obsidian";
+import { NotionFreezeSettings, DEFAULT_SETTINGS, DatabaseSyncResult } from "./types";
 import { NotionFreezeSettingTab } from "./settings";
 import { FreezeModal, FrozenDatabase } from "./freeze-modal";
-import {
-	createNotionClient,
-	normalizeNotionId,
-	detectNotionObject,
-} from "./notion-client";
-import { freezePage } from "./page-freezer";
-import { freezeDatabase } from "./database-freezer";
+import { createNotionClient, normalizeNotionId } from "./notion-client";
+import { freshDatabaseImport, refreshDatabase } from "./database-freezer";
 
 export default class NotionFreezePlugin extends Plugin {
 	settings: NotionFreezeSettings = DEFAULT_SETTINGS;
@@ -31,24 +26,8 @@ export default class NotionFreezePlugin extends Plugin {
 
 		this.addCommand({
 			id: "sync-notion",
-			name: "Sync Notion page or database",
+			name: "Sync Notion database",
 			callback: () => this.openFreezeModal(),
-		});
-
-		this.addCommand({
-			id: "resync-notion",
-			name: "Re-sync this page",
-			checkCallback: (checking: boolean) => {
-				const file = this.app.workspace.getActiveFile();
-				if (!file) return false;
-				const cache = this.app.metadataCache.getFileCache(file);
-				const notionId = cache?.frontmatter?.["notion-id"];
-				if (!notionId) return false;
-				if (!checking) {
-					void this.executeRefreeze(file);
-				}
-				return true;
-			},
 		});
 	}
 
@@ -75,141 +54,43 @@ export default class NotionFreezePlugin extends Plugin {
 		new FreezeModal(
 			this.app,
 			this.settings.defaultOutputFolder,
-			(result) => { void this.executeFreeze(result.notionInput, result.outputFolder); },
-			(db) => { void this.executeResyncDatabase(db); }
+			(result) => { void this.executeFreshImport(result.notionInput, result.outputFolder); },
+			(db) => { void this.executeRefresh(db); }
 		).open();
 	}
 
-	private async executeFreeze(
+	private async executeFreshImport(
 		input: string,
 		outputFolder: string
 	): Promise<void> {
 		try {
-			const notionId = normalizeNotionId(input);
+			const databaseId = normalizeNotionId(input);
 			const client = createNotionClient(this.settings.apiKey);
 
-			new Notice("Notion sync: detecting content type...");
-
-			const detection = await detectNotionObject(client, notionId);
-
-			if (detection.type === "page") {
-				new Notice("Notion sync: syncing page...");
-				const result = await freezePage(this.app, {
-					client,
-					notionId,
-					outputFolder,
-				});
-				new Notice(
-					`Notion sync: Page "${result.title}" ${result.status}.`
-				);
-			} else {
-				const notice = new Notice("Notion sync: syncing database...", 0);
-				const result = await freezeDatabase(
-					this.app,
-					{ client, notionId, outputFolder },
-					(current, total, title) => {
-						notice.setMessage(
-							`Notion sync: "${title}" ${current} / ${total} entries`
-						);
-					}
-				);
-				notice.hide();
-				new Notice(
-					formatDatabaseResult(result.title, result, "done")
-				);
-			}
-		} catch (err) {
-			console.error("Notion sync error:", err);
-			new Notice(
-				`Notion sync error: ${err instanceof Error ? err.message : String(err)}`
-			);
-		}
-	}
-
-	private async executeResyncDatabase(db: FrozenDatabase): Promise<void> {
-		try {
-			const notice = new Notice(`Notion sync: Re-syncing "${db.title}"...`, 0);
-			const client = createNotionClient(this.settings.apiKey);
-			const result = await freezeDatabase(
+			const notice = new Notice("Querying database from Notion...", 0);
+			const result = await freshDatabaseImport(
 				this.app,
-				{
-					client,
-					notionId: db.databaseId,
-					outputFolder: getParentPath(db.folderPath),
-				},
-				(current, total, title) => {
-					notice.setMessage(
-						`Notion sync: "${title}" ${current} / ${total} entries`
-					);
+				client,
+				databaseId,
+				outputFolder,
+				(progress) => {
+					switch (progress.phase) {
+						case "querying":
+							notice.setMessage("Querying database from Notion...");
+							break;
+						case "importing":
+							notice.setMessage(
+								`Importing ${progress.current} / ${progress.total} entries...`
+							);
+							break;
+						case "done":
+							notice.hide();
+							break;
+					}
 				}
 			);
 			notice.hide();
-			new Notice(
-				formatDatabaseResult(result.title, result, "re-synced")
-			);
-		} catch (err) {
-			console.error("Notion sync resync error:", err);
-			new Notice(
-				`Notion sync error: ${err instanceof Error ? err.message : String(err)}`
-			);
-		}
-	}
-
-	private async executeRefreeze(file: TFile): Promise<void> {
-		if (!this.settings.apiKey) {
-			new Notice(
-				"Notion sync: please set your API key in settings."
-			);
-			return;
-		}
-
-		try {
-			const cache = this.app.metadataCache.getFileCache(file);
-			const notionId = cache?.frontmatter?.["notion-id"];
-			const databaseId = cache?.frontmatter?.["notion-database-id"];
-
-			if (!notionId) {
-				new Notice("Notion sync: no notion-id found in frontmatter.");
-				return;
-			}
-
-			const client = createNotionClient(this.settings.apiKey);
-
-			if (databaseId) {
-				// Re-sync entire database
-				const notice = new Notice("Notion sync: re-syncing database...", 0);
-				const parentFolder = file.parent?.path || this.settings.defaultOutputFolder;
-				const result = await freezeDatabase(
-					this.app,
-					{
-						client,
-						notionId: databaseId,
-						// Use the parent of the parent folder (since database entries are in DatabaseTitle/)
-						outputFolder: getParentPath(parentFolder),
-					},
-					(current, total, title) => {
-						notice.setMessage(
-							`Notion sync: "${title}" ${current} / ${total} entries`
-						);
-					}
-				);
-				notice.hide();
-				new Notice(
-					formatDatabaseResult(result.title, result, "re-synced")
-				);
-			} else {
-				// Re-sync single page
-				new Notice("Notion sync: re-syncing page...");
-				const parentFolder = file.parent?.path || this.settings.defaultOutputFolder;
-				const result = await freezePage(this.app, {
-					client,
-					notionId,
-					outputFolder: parentFolder,
-				});
-				new Notice(
-					`Notion sync: Page "${result.title}" ${result.status}.`
-				);
-			}
+			new Notice(formatDatabaseResult(result.title, result, "imported"));
 		} catch (err) {
 			console.error("Notion sync error:", err);
 			new Notice(
@@ -217,22 +98,61 @@ export default class NotionFreezePlugin extends Plugin {
 			);
 		}
 	}
-}
 
-function getParentPath(path: string): string {
-	const idx = path.lastIndexOf("/");
-	return idx > 0 ? path.slice(0, idx) : "";
+	private async executeRefresh(db: FrozenDatabase): Promise<void> {
+		try {
+			const client = createNotionClient(this.settings.apiKey);
+
+			const notice = new Notice(`Querying "${db.title}" from Notion...`, 0);
+			const result = await refreshDatabase(
+				this.app,
+				client,
+				db,
+				(progress) => {
+					switch (progress.phase) {
+						case "querying":
+							notice.setMessage(`Querying "${db.title}" from Notion...`);
+							break;
+						case "diffing":
+							notice.setMessage("Checking against current freeze dates...");
+							break;
+						case "detected":
+							new Notice(
+								`Detected ${progress.staleCount} of ${progress.total} entries out of date`,
+								5000
+							);
+							break;
+						case "importing":
+							notice.setMessage(
+								`Refreshing ${progress.current} / ${progress.total} entries...`
+							);
+							break;
+						case "done":
+							notice.hide();
+							break;
+					}
+				}
+			);
+			notice.hide();
+			new Notice(formatDatabaseResult(result.title, result, "re-synced"));
+		} catch (err) {
+			console.error("Notion sync error:", err);
+			new Notice(
+				`Notion sync error: ${err instanceof Error ? err.message : String(err)}`
+			);
+		}
+	}
 }
 
 function formatDatabaseResult(
 	title: string,
-	result: DatabaseFreezeResult,
+	result: DatabaseSyncResult,
 	verb: string
 ): string {
 	let msg =
 		`Notion sync: "${title}" ${verb}. ` +
 		`${result.created} created, ${result.updated} updated, ` +
-		`${result.skipped} skipped, ${result.deleted} deleted`;
+		`${result.skipped} unchanged, ${result.deleted} deleted`;
 	if (result.failed > 0) {
 		msg += `, ${result.failed} failed`;
 	}

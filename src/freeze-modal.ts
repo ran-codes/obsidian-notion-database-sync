@@ -34,16 +34,16 @@ export class FreezeModal extends Modal {
 		const { contentEl } = this;
 
 		// --- Freeze section ---
-		contentEl.createEl("h2", { text: "Sync Notion content" });
+		contentEl.createEl("h2", { text: "Sync Notion database" });
 
 		new Setting(contentEl)
-			.setName("Page or database ID")
+			.setName("Database ID")
 			.setDesc(
-				"Paste a Notion page/database ID, UUID, or full URL."
+				"Paste a Notion database ID, UUID, or share URL."
 			)
 			.addText((text) =>
 				text
-					.setPlaceholder("https://notion.so/... or abc123...")
+					.setPlaceholder("https://notion.so/... or database UUID")
 					.onChange((value) => {
 						this.notionInput = value.trim();
 					})

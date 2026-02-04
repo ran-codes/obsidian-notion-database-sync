@@ -5,30 +5,38 @@ import {
 	PageObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 import { App, normalizePath, TFile, TFolder } from "obsidian";
-import { DatabaseFreezeResult, FreezeOptions } from "./types";
+import { DatabaseSyncResult, ProgressCallback } from "./types";
 import { notionRequest } from "./notion-client";
 import { convertRichText } from "./block-converter";
-import { freezePage } from "./page-freezer";
+import { writeDatabaseEntry } from "./page-writer";
+import { FrozenDatabase } from "./freeze-modal";
 
-export type ProgressCallback = (current: number, total: number, title: string) => void;
-
-export async function freezeDatabase(
+export async function freshDatabaseImport(
 	app: App,
-	options: Omit<FreezeOptions, "databaseId">,
+	client: Client,
+	databaseId: string,
+	outputFolder: string,
 	onProgress?: ProgressCallback
-): Promise<DatabaseFreezeResult> {
-	const { client, notionId, outputFolder } = options;
-
-	// Fetch database metadata
+): Promise<DatabaseSyncResult> {
+	// Validate database exists
 	const database = (await notionRequest(() =>
-		client.databases.retrieve({ database_id: notionId })
+		client.databases.retrieve({ database_id: databaseId })
 	)) as DatabaseObjectResponse;
 
 	const dbTitle = convertRichText(database.title) || "Untitled Database";
+
+	// Check if already synced
+	const existingFolder = scanForExistingSync(app, databaseId);
+	if (existingFolder) {
+		throw new Error(
+			`Already synced in folder: ${existingFolder}. Use Re-sync.`
+		);
+	}
+
 	const safeName = dbTitle.replace(/[\\/:*?"<>|]/g, "-").trim() || "Untitled Database";
 	const folderPath = normalizePath(`${outputFolder}/${safeName}`);
 
-	// Get the data source ID for querying entries and reading properties
+	// Get data source
 	if (!database.data_sources || database.data_sources.length === 0) {
 		throw new Error(
 			"This appears to be a linked database, which is not supported by the Notion API."
@@ -36,69 +44,156 @@ export async function freezeDatabase(
 	}
 	const dataSourceId = database.data_sources[0].id;
 
-	// Retrieve the data source to get property schema
 	const dataSource = (await notionRequest(() =>
 		client.dataSources.retrieve({ data_source_id: dataSourceId })
 	)) as DataSourceObjectResponse;
 
-	// Create folder if needed
+	// Create folder and generate .base file
 	await ensureFolderExists(app, folderPath);
+	await generateBaseFile(app, dataSource, folderPath, databaseId);
 
-	// Generate .base file
-	await generateBaseFile(app, dataSource, folderPath, notionId);
-
-	// Query all entries via dataSources.query (paginated)
+	// Query all entries
+	onProgress?.({ phase: "querying" });
 	const entries = await queryAllEntries(client, dataSourceId);
 
-	// Scan existing local files for this database
-	const localFiles = scanLocalFiles(app, folderPath);
-
-	// Track results
+	const total = entries.length;
 	let created = 0;
 	let updated = 0;
-	let skipped = 0;
-	let deleted = 0;
 	let failed = 0;
 	const errors: string[] = [];
 
-	// Process each entry — continue on failure
-	const total = entries.length;
-	const processedIds = new Set<string>();
+	// Import all entries
 	let current = 0;
 	for (const entry of entries) {
-		processedIds.add(entry.id);
 		current++;
-
-		if (onProgress) onProgress(current, total, dbTitle);
+		onProgress?.({ phase: "importing", current, total });
 
 		try {
-			const result = await freezePage(app, {
+			const result = await writeDatabaseEntry(app, {
 				client,
-				notionId: entry.id,
+				page: entry,
 				outputFolder: folderPath,
-				databaseId: notionId,
+				databaseId,
 			});
 
-			switch (result.status) {
-				case "created":
-					created++;
-					break;
-				case "updated":
-					updated++;
-					break;
-				case "skipped":
-					skipped++;
-					break;
-			}
+			if (result.status === "created") created++;
+			else updated++;
 		} catch (err) {
 			failed++;
 			const msg = `Entry ${entry.id}: ${err instanceof Error ? err.message : String(err)}`;
 			errors.push(msg);
-			console.error(`Notion Freeze: Failed to freeze entry ${entry.id}:`, err);
+			console.error(`Notion sync: Failed to import entry ${entry.id}:`, err);
 		}
 	}
 
-	// Mark deleted entries (in Notion but not returned in query)
+	onProgress?.({ phase: "done" });
+
+	return {
+		title: dbTitle,
+		folderPath,
+		total,
+		created,
+		updated,
+		skipped: 0,
+		deleted: 0,
+		failed,
+		errors,
+	};
+}
+
+export async function refreshDatabase(
+	app: App,
+	client: Client,
+	db: FrozenDatabase,
+	onProgress?: ProgressCallback
+): Promise<DatabaseSyncResult> {
+	// Query fresh metadata
+	onProgress?.({ phase: "querying" });
+
+	const database = (await notionRequest(() =>
+		client.databases.retrieve({ database_id: db.databaseId })
+	)) as DatabaseObjectResponse;
+
+	const dbTitle = convertRichText(database.title) || "Untitled Database";
+
+	// Get data source
+	if (!database.data_sources || database.data_sources.length === 0) {
+		throw new Error(
+			"This appears to be a linked database, which is not supported by the Notion API."
+		);
+	}
+	const dataSourceId = database.data_sources[0].id;
+
+	const dataSource = (await notionRequest(() =>
+		client.dataSources.retrieve({ data_source_id: dataSourceId })
+	)) as DataSourceObjectResponse;
+
+	// Query all entries
+	const entries = await queryAllEntries(client, dataSourceId);
+
+	// Diff pass
+	onProgress?.({ phase: "diffing" });
+	const localFiles = scanLocalFiles(app, db.folderPath);
+
+	const staleEntries: PageObjectResponse[] = [];
+	let skippedCount = 0;
+	const processedIds = new Set<string>();
+
+	for (const entry of entries) {
+		processedIds.add(entry.id);
+		const localFile = localFiles.get(entry.id);
+
+		if (!localFile) {
+			// New row — not in local vault
+			staleEntries.push(entry);
+		} else {
+			const cache = app.metadataCache.getFileCache(localFile);
+			const storedEdited = cache?.frontmatter?.["notion-last-edited"];
+			if (!storedEdited || storedEdited !== entry.last_edited_time) {
+				staleEntries.push(entry);
+			} else {
+				skippedCount++;
+			}
+		}
+	}
+
+	const total = entries.length;
+	onProgress?.({ phase: "detected", staleCount: staleEntries.length, total });
+
+	// Update .base file (schema may have changed)
+	await generateBaseFile(app, dataSource, db.folderPath, db.databaseId);
+
+	// Import only stale entries
+	let created = 0;
+	let updated = 0;
+	let failed = 0;
+	const errors: string[] = [];
+
+	let current = 0;
+	for (const entry of staleEntries) {
+		current++;
+		onProgress?.({ phase: "importing", current, total: staleEntries.length });
+
+		try {
+			const result = await writeDatabaseEntry(app, {
+				client,
+				page: entry,
+				outputFolder: db.folderPath,
+				databaseId: db.databaseId,
+			});
+
+			if (result.status === "created") created++;
+			else updated++;
+		} catch (err) {
+			failed++;
+			const msg = `Entry ${entry.id}: ${err instanceof Error ? err.message : String(err)}`;
+			errors.push(msg);
+			console.error(`Notion sync: Failed to refresh entry ${entry.id}:`, err);
+		}
+	}
+
+	// Handle deletions: entries in local but not in query
+	let deleted = 0;
 	for (const [id, file] of localFiles) {
 		if (!processedIds.has(id)) {
 			await markAsDeleted(app, file);
@@ -106,7 +201,30 @@ export async function freezeDatabase(
 		}
 	}
 
-	return { title: dbTitle, folderPath, created, updated, skipped, deleted, failed, errors };
+	onProgress?.({ phase: "done" });
+
+	return {
+		title: dbTitle,
+		folderPath: db.folderPath,
+		total,
+		created,
+		updated,
+		skipped: skippedCount,
+		deleted,
+		failed,
+		errors,
+	};
+}
+
+function scanForExistingSync(app: App, databaseId: string): string | null {
+	for (const file of app.vault.getMarkdownFiles()) {
+		const cache = app.metadataCache.getFileCache(file);
+		const dbId = cache?.frontmatter?.["notion-database-id"];
+		if (dbId === databaseId) {
+			return file.parent?.path || null;
+		}
+	}
+	return null;
 }
 
 async function queryAllEntries(
